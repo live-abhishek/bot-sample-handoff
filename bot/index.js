@@ -10,9 +10,66 @@ var liveAgentAddress = {};
 var liveAgentAddress = {};
 var userAddress = {};
 
+function messageHandler(session){
+    if(session.message.address.channelId === 'directline'){
+        directLineMessageHandler(session);
+    } else {
+        userMessageHandler(session);
+    }
+}
+
+function handleUserBotMessageHandler(session){
+    // TODO: handle this with care, what happens if the message is picture instead of text
+    var msg = session.message.text.toLowerCase();
+    if(msg == 'help'){
+        var handoffMessage = createStartHandoffMessage();
+        // send to the handoff system
+    } else {
+        // here goes the bot logic
+    }
+}
+
+function userMessageHandler(session){
+    if(session.userData && session.userData.handoff && session.userData.handoff.state){
+        var handoffState = session.userData.handoff.state;
+        if(handoffState === 'HANDOFF_INIT'){
+            session.send('Please wait, we are connecting you to one of our agents');
+        } else if(handoffState === 'HANDOFF'){
+
+        } else {
+            handleUserBotMessageHandler(session);
+        }
+    } else {
+        handleUserBotMessageHandler(session);
+    }
+}
+
+function directLineMessageHandler(session){
+    // registration of direct line
+    if(msg == ''){
+        liveAgentAddress = session.message.address;
+    }
+}
+
+function createStartHandoffMessage(){
+    return createHandoffMessage('HANDOFF_START', null, Date.now());
+}
+
+function createTextHandoffMessage(msgText){
+    return createHandoffMessage('HANDOFF_TEXT', msgText, Date.now());
+}
+
+function createHandoffMessage(msgType, msgText, msgTimeStamp){
+    var handoffMessage  = {};
+    handoffMessage.msgType = msgType;
+    handoffMessage.msgText = msgText;
+    handoffMessage.msgTimeStamp = msgTimeStamp;
+    return handoffMessage;
+}
+
 var bot = new builder.UniversalBot(connector, [
     function(session){
-        var msg = session.message.text.toLowerCase();
+        messageHandler(session);
         if(session.message.address.channelId === 'directline'){
             if(msg == '' ||msg == 'hi'){
                 liveAgentAddress = session.message.address;
