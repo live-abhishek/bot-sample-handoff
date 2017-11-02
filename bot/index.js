@@ -7,8 +7,19 @@ var connector = new builder.ChatConnector({
 });
 
 var liveAgentAddress = {};
-var liveAgentAddress = {};
 var userAddress = {};
+
+var handOffConnections = [];
+
+function createHandoffConncetion(session){
+    var handoffConnection = {};
+    handoffConnection.customerChannelId = session.message.address.channelId;
+    handoffConnection.custonerAddress = session.message.address;
+    handoffConnection.agentAddress = liveAgentAddress;
+    handoffConnection.customerHandoffState = 'HANDOFF_START';
+    handoffConnection.lastUpateTime = Date.now();
+    return handoffConnection;
+}
 
 function messageHandler(session){
     if(session.message.address.channelId === 'directline'){
@@ -22,7 +33,14 @@ function handleUserBotMessageHandler(session){
     // TODO: handle this with care, what happens if the message is picture instead of text
     var msg = session.message.text.toLowerCase();
     if(msg == 'help'){
-        var handoffMessage = createStartHandoffMessage();
+        if(handoffConnections.length == 5){
+            session.send('All our agents are busy. Please try again after some time');
+            return;
+        }
+        var handoffMessage = createStartHandoffMessage(session.message.channelId);
+        var handOffConnection = createHandoffConncetion(session);
+        handoffConnections.push(handoffConnection);
+        sendProactiveMessage(JSON.stringify(handoffMessage), liveAgentAddress);
         // send to the handoff system
     } else {
         // here goes the bot logic
@@ -48,20 +66,25 @@ function directLineMessageHandler(session){
     // registration of direct line
     if(msg == ''){
         liveAgentAddress = session.message.address;
+    } else {
+        var handoffMessage = JSON.parse(session.message.text);
+        
     }
 }
 
-function createStartHandoffMessage(){
-    return createHandoffMessage('HANDOFF_START', null, Date.now());
+function createStartHandoffMessage(channelId){
+    return createHandoffMessage(channelId, 'HANDOFF_START', '', Date.now());
 }
 
-function createTextHandoffMessage(msgText){
-    return createHandoffMessage('HANDOFF_TEXT', msgText, Date.now());
+function createTextHandoffMessage(channelId, msgText){
+    return createHandoffMessage(channelId, 'HANDOFF_TEXT', msgText, Date.now());
 }
 
-function createHandoffMessage(msgType, msgText, msgTimeStamp){
+
+function createHandoffMessage(channelId, msgCommand, msgText, msgTimeStamp){
     var handoffMessage  = {};
-    handoffMessage.msgType = msgType;
+    handoffMessage.channelId = channelId;
+    handoffMessage.msgCommand = msgCommand;
     handoffMessage.msgText = msgText;
     handoffMessage.msgTimeStamp = msgTimeStamp;
     return handoffMessage;
