@@ -6,6 +6,10 @@ var connector = new builder.ChatConnector({
     appPassword: process.env.MICROSOFT_APP_PASSWORD
 });
 
+var MAX_HANDOFF_CONNETIONS = process.env.MAX_HANDOFF_CONNETIONS;
+var HANDOFF_INTITIATION_STRING = process.env.HANDOFF_INTITIATION_STRING;
+var HANDOFF_CLOSE_REQUEST_STRING = process.env.HANDOFF_CLOSE_REQUEST_STRING;
+
 var liveAgentAddress = {};
 var userAddress = {};
 
@@ -46,15 +50,15 @@ function messageHandler(session){
 function handleUserBotMessageHandler(session){
     // TODO: handle this with care, what happens if the message is picture instead of text
     var msg = session.message.text.toLowerCase();
-    if(msg == 'help'){
-        if(handoffConnections.length >= 5){
-            session.send('ALL_AGENTS_BUSY');
+    if(msg == HANDOFF_INTITIATION_STRING){
+        if(handoffConnections.length >= MAX_HANDOFF_CONNETIONS){
+            sendSessionMessage(session, 'ALL_AGENTS_BUSY');
             return;
         }
         var handoffMessage = createStartHandoffMessage(session.message.address.conversation.id);
         var handoffConnection = createHandoffConncetion(session);
         handoffConnections.push(handoffConnection);
-        sendProactiveMessage(JSON.stringify(handoffMessage), liveAgentAddress);
+        forwardMessageToDirectLine(JSON.stringify(handoffMessage));
         // send to the handoff system
     } else {
         // here goes the bot logic
@@ -67,18 +71,18 @@ function userMessageHandler(session){
         var handoffState = handoffConnection.customerHandoffState;
         var handoffMessage = null;
         if(handoffState === HandOffConnectionState.HANDOFF_INIT){
-            session.send('PLEASE_WAIT_CONNECTING_TO_AGENT');
+            sendSessionMessage(session, 'PLEASE_WAIT_CONNECTING_TO_AGENT');
         } else if(handoffState === HandOffConnectionState.HANDOFF_CHAT){
             // if message is stop chat then
             // send stop command to the live agent, otherwise
-            if(session.message.text.toLowerCase() == 'stop chat'){
+            if(session.message.text.toLowerCase() == HANDOFF_CLOSE_REQUEST_STRING){
                 handoffMessage = createStopHandoffMessage(session.message.address.conversation.id);
-                sendProactiveMessage(JSON.stringify(handoffMessage), liveAgentAddress);
+                forwardMessageToDirectLine(JSON.stringify(handoffMessage));
                 removeHandOffConnectionByChannelId(session.message.address.conversation.id);
-                session.send('LIVE_AGENT_CHAT_ENDED');
+                sendSessionMessage(session, 'LIVE_AGENT_CHAT_ENDED');
             } else { // send the message to live agent
                 handoffMessage = createTextHandoffMessage(session.message.address.conversation.id, session.message.text);
-                sendProactiveMessage(JSON.stringify(handoffMessage), liveAgentAddress);
+                forwardMessageToDirectLine(JSON.stringify(handoffMessage));
             }
         } else {
             handleUserBotMessageHandler(session);
@@ -186,13 +190,11 @@ bot.on('conversationUpdate', function (message) {
 
 bot.use({
     botbuilder: function (session, next) {
-        var text = session.message.text.toLowerCase();
         logger.debug(session.message);
-        var supportRegex = localizedRegex(session, ['help']);
-
-        if (supportRegex.test(text)) {
-        }
-
+        next();
+    },
+    send: function(event, next){
+        logger.debug(event.text);
         next();
     }
 });
@@ -226,6 +228,17 @@ function beginDialog(address, dialogId, dialogArgs) {
 
 function sendMessage(message) {
     bot.send(message);
+}
+
+function sendSessionMessage(session, message){
+    session.send(message);
+}
+
+function forwardMessageToDirectLine(message){
+    if(!liveAgentAddress){
+        throw 'Directline address is null. Maybe directline is not connected.'
+    }
+    sendProactiveMessage(message, liveAgentAddress);
 }
 
 function sendProactiveMessage(message, address) {
