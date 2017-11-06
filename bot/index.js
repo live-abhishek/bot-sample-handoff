@@ -11,12 +11,26 @@ var userAddress = {};
 
 var handoffConnections = [];
 
+var HandOffConnectionState = {
+    HANDOFF_CHAT : 'HANDOFF_CHAT',
+    HANDOFF_INIT : 'HANDOFF_INIT'
+};
+
+var HandoffMessageCommand = {
+    CHAT_START_FROM_USER : 'CHAT_START_FROM_USER',
+    CHAT_START_FROM_USER_SUCCESS : 'CHAT_START_FROM_USER_SUCCESS',
+    CHAT_TEXT_FROM_USER : 'CHAT_TEXT_FROM_USER',
+    CHAT_TEXT_FROM_AGENT : 'CHAT_TEXT_FROM_AGENT',
+    CHAT_END_FROM_USER : 'CHAT_END_FROM_USER',
+    CHAT_END_FROM_AGENT : 'CHAT_END_FROM_AGENT'
+};
+
 function createHandoffConncetion(session){
     var handoffConnection = {};
     handoffConnection.customerConversationId = session.message.address.conversation.id;
     handoffConnection.customerAddress = session.message.address;
     handoffConnection.agentAddress = liveAgentAddress;
-    handoffConnection.customerHandoffState = 'CHAT_START_FROM_USER';
+    handoffConnection.customerHandoffState = HandOffConnectionState.HANDOFF_INIT;
     handoffConnection.lastUpateTime = Date.now();
     return handoffConnection;
 }
@@ -34,7 +48,7 @@ function handleUserBotMessageHandler(session){
     var msg = session.message.text.toLowerCase();
     if(msg == 'help'){
         if(handoffConnections.length >= 5){
-            session.send('All our agents are busy. Please try again after some time');
+            session.send('ALL_AGENTS_BUSY');
             return;
         }
         var handoffMessage = createStartHandoffMessage(session.message.address.conversation.id);
@@ -51,18 +65,19 @@ function userMessageHandler(session){
     var handoffConnection = getHandoffConnectionByChannelId(session.message.address.conversation.id);
     if(handoffConnection != null){
         var handoffState = handoffConnection.customerHandoffState;
-        if(handoffState === 'HANDOFF_INIT'){
-            session.send('Please wait, we are connecting you to one of our agents');
-        } else if(handoffState === 'HANDOFF_CHAT'){
+        var handoffMessage = null;
+        if(handoffState === HandOffConnectionState.HANDOFF_INIT){
+            session.send('PLEASE_WAIT_CONNECTING_TO_AGENT');
+        } else if(handoffState === HandOffConnectionState.HANDOFF_CHAT){
             // if message is stop chat then
             // send stop command to the live agent, otherwise
             if(session.message.text.toLowerCase() == 'stop chat'){
-                var handoffMessage = createStopHandoffMessage(session.message.address.conversation.id);
+                handoffMessage = createStopHandoffMessage(session.message.address.conversation.id);
                 sendProactiveMessage(JSON.stringify(handoffMessage), liveAgentAddress);
-                removeHandOffConnectionByChannelId(session.message.address.conversationId);
-                session.send('Chat with live agent ended!');
+                removeHandOffConnectionByChannelId(session.message.address.conversation.id);
+                session.send('LIVE_AGENT_CHAT_ENDED');
             } else { // send the message to live agent
-                var handoffMessage = createTextHandoffMessage(session.message.address.conversation.id, session.message.text);
+                handoffMessage = createTextHandoffMessage(session.message.address.conversation.id, session.message.text);
                 sendProactiveMessage(JSON.stringify(handoffMessage), liveAgentAddress);
             }
         } else {
@@ -82,14 +97,17 @@ function directLineMessageHandler(session){
         var handoffMessage = JSON.parse(session.message.text);
         var handoffConnection = getHandoffConnectionByChannelId(handoffMessage.conversationId);
         if(handoffConnection != null){
-            if(handoffMessage.msgCommand == 'CHAT_START_FROM_USER_SUCCESS'){
-                handoffConnection.customerHandoffState = 'HANDOFF_CHAT';
-                sendProactiveMessage('You are now connected to our agent.', handoffConnection.customerAddress);
-            } else if(handoffMessage.msgCommand == 'CHAT_TEXT_FROM_AGENT'){
+            if(handoffMessage.msgCommand == HandoffMessageCommand.CHAT_START_FROM_USER_SUCCESS){
+                handoffConnection.customerHandoffState = HandOffConnectionState.HANDOFF_CHAT;
+                sendProactiveMessage('CONNECTED_TO_AGENT', handoffConnection.customerAddress);
+            } else if(handoffMessage.msgCommand == HandoffMessageCommand.CHAT_TEXT_FROM_AGENT){
                 sendProactiveMessage(handoffMessage.msgText, handoffConnection.customerAddress);
+            } else if(handoffMessage.msgCommand == HandoffMessageCommand.CHAT_END_FROM_AGENT){
+                removeHandOffConnectionByChannelId(handoffMessage.conversationId);
+                sendProactiveMessage('DISCONNETED_BY_AGENT', handoffConnection.customerAddress);
             }
         }
-    }// CHANNEL ID ko CONVERSATION ID karna hai
+    }
 }
 
 function getHandoffConnectionByChannelId(conversationId){
@@ -115,15 +133,15 @@ function removeHandOffConnectionByChannelId(conversationId){
 }
 
 function createStartHandoffMessage(conversationId){
-    return createHandoffMessage(conversationId, 'CHAT_START_FROM_USER', '', Date.now());
+    return createHandoffMessage(conversationId, HandoffMessageCommand.CHAT_START_FROM_USER, '', Date.now());
 }
 
 function createStopHandoffMessage(conversationId){
-    return createHandoffMessage(conversationId, 'CHAT_END_FROM_USER', '', Date.now());
+    return createHandoffMessage(conversationId, HandoffMessageCommand.CHAT_END_FROM_USER, '', Date.now());
 }
 
 function createTextHandoffMessage(conversationId, msgText){
-    return createHandoffMessage(conversationId, 'CHAT_TEXT_FROM_USER', msgText, Date.now());
+    return createHandoffMessage(conversationId, HandoffMessageCommand.CHAT_TEXT_FROM_USER, msgText, Date.now());
 }
 
 function createHandoffMessage(conversationId, msgCommand, msgText, msgTimeStamp){
@@ -138,23 +156,6 @@ function createHandoffMessage(conversationId, msgCommand, msgText, msgTimeStamp)
 var bot = new builder.UniversalBot(connector, [
     function(session){
         messageHandler(session);
-        /*
-        if(session.message.address.channelId === 'directline'){
-            if(msg == '' ||msg == 'hi'){
-                liveAgentAddress = session.message.address;
-                session.send('Now I know you!')
-            } else {
-                sendProactiveMessage(msg, userAddress);
-            }
-        } else {
-            if(msg == '' ||msg == 'hi'){
-                userAddress = session.message.address;
-                session.send('welcome_title');
-            } else {
-                sendProactiveMessage(msg, liveAgentAddress);
-            }
-        }
-        */
     }
 ]);
 
