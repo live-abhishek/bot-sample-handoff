@@ -1,7 +1,7 @@
 {
-    "PLEASE_WAIT_CONNECTING_TO_AGENT" :"Please wait, we are connecting you to one of our agents",
-    "LIVE_AGENT_CHAT_ENDED" :"Chat with live agent ended!",
-    "ALL_AGENTS_BUSY" : "All our agents are busy. Please try again after some time",
+    "PLEASE_WAIT_CONNECTING_TO_AGENT" :"Please wait, we are connecting you to one of our agents.",
+    "LIVE_AGENT_CHAT_ENDED" :"Chat with live agent ended.",
+    "ALL_AGENTS_BUSY" : "All our agents are busy. Please try again after some time.",
     "CONNECTED_TO_AGENT" : "You are now connected to our agent.",
     "DISCONNETED_BY_AGENT" : "Chat disconnected by live agent."
 }
