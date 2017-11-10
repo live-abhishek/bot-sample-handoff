@@ -9,6 +9,7 @@ var connector = new builder.ChatConnector({
 var MAX_HANDOFF_CONNETIONS = process.env.MAX_HANDOFF_CONNETIONS;
 var HANDOFF_INTITIATION_STRING = process.env.HANDOFF_INTITIATION_STRING;
 var HANDOFF_CLOSE_REQUEST_STRING = process.env.HANDOFF_CLOSE_REQUEST_STRING;
+var HANDOFF_CONNECTION_CLEANUP_TIME_MINUTES = parseInt(process.env.HANDOFF_CONNECTION_CLEANUP_TIME_MINUTES);
 
 var liveAgentAddress = {};
 var userAddress = {};
@@ -50,7 +51,7 @@ function messageHandler(session){
 function handleUserBotMessageHandler(session){
     // TODO: handle this with care, what happens if the message is picture instead of text
     var msg = session.message.text.toLowerCase();
-    if(msg == HANDOFF_INTITIATION_STRING){
+    if(msg == HANDOFF_INTITIATION_STRING.toLowerCase()){
         if(handoffConnections.length >= MAX_HANDOFF_CONNETIONS){
             sendSessionMessage(session, 'All our agents are busy. Please try again after some time.');
             return;
@@ -59,6 +60,7 @@ function handleUserBotMessageHandler(session){
         var handoffConnection = createHandoffConncetion(session);
         handoffConnections.push(handoffConnection);
         forwardMessageToDirectLine(JSON.stringify(handoffMessage));
+        return;
         // send to the handoff system
     } else {
         // here goes the bot logic
@@ -77,11 +79,13 @@ function userMessageHandler(session){
             // send stop command to the live agent, otherwise
             if(session.message.text.toLowerCase() == HANDOFF_CLOSE_REQUEST_STRING){
                 handoffMessage = createStopHandoffMessage(session.message.address.conversation.id);
+                handoffConnection.lastUpateTime = handoffMessage.msgTimeStamp;
                 forwardMessageToDirectLine(JSON.stringify(handoffMessage));
                 removeHandOffConnectionByChannelId(session.message.address.conversation.id);
                 sendSessionMessage(session, 'Chat with live agent ended.');
             } else { // send the message to live agent
                 handoffMessage = createTextHandoffMessage(session.message.address.conversation.id, session.message.text);
+                handoffConnection.lastUpateTime = handoffMessage.msgTimeStamp;
                 forwardMessageToDirectLine(JSON.stringify(handoffMessage));
             }
         } else {
@@ -103,8 +107,10 @@ function directLineMessageHandler(session){
         if(handoffConnection != null){
             if(handoffMessage.msgCommand == HandoffMessageCommand.CHAT_START_FROM_USER_SUCCESS){
                 handoffConnection.customerHandoffState = HandOffConnectionState.HANDOFF_CHAT;
+                handoffConnection.lastUpateTime = Date.now();
                 sendProactiveMessage('You are now connected to our agent.', handoffConnection.customerAddress);
             } else if(handoffMessage.msgCommand == HandoffMessageCommand.CHAT_TEXT_FROM_AGENT){
+                handoffConnection.lastUpateTime = Date.now();
                 sendProactiveMessage(handoffMessage.msgText, handoffConnection.customerAddress);
             } else if(handoffMessage.msgCommand == HandoffMessageCommand.CHAT_END_FROM_AGENT){
                 removeHandOffConnectionByChannelId(handoffMessage.conversationId);
@@ -246,6 +252,20 @@ function sendProactiveMessage(message, address) {
     msg.text(message);
     bot.send(msg);
 }
+
+setInterval(function(){
+    var idx = -1;
+    for(var i = 0; i < handoffConnections.length; i++){
+        if(!handoffConnections[i].lastUpateTime){
+            idx = i;
+        }else if(Date.now() > handoffConnections[i].lastUpateTime + 2*60*1000){
+            idx = i;
+        }
+    }
+    if(idx > -1){
+        handoffConnections.splice(idx, 1 );
+    }
+}, 1*60*1000);
 
 
 module.exports = {
